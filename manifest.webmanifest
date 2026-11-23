@@ -1,0 +1,14 @@
+{
+  "name": "壁纸台 · 手机壁纸生成器",
+  "short_name": "壁纸台",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF8F3",
+  "theme_color": "#FBF8F3",
+  "icons": [
+    {"src": "./apple-touch-icon.png", "sizes": "180x180", "type": "image/png"},
+    {"src": "./icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
