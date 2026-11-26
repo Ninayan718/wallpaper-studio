@@ -1,4 +1,4 @@
-const CACHE = 'wallpaper-studio-4c7b4493b8';
+const CACHE = 'wallpaper-studio-c4ba6384fe';
 const FILES = ['./', './index.html', './apple-touch-icon.png', './icon-512.png', './manifest.webmanifest'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
