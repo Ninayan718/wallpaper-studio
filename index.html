@@ -192,6 +192,28 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .about{font-size:11.5px;color:var(--muted);line-height:1.8;padding:4px 2px}
 .about b{color:var(--ink)}
+
+/* 待办页 */
+.todo-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:13px;padding:0 2px}
+.todo-day{font-size:19px;font-weight:700;letter-spacing:.5px}
+.todo-day small{display:block;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:1px;margin-top:1px}
+.todo-add-row{display:flex;gap:8px;margin-bottom:10px}
+.todo-add-row input{flex:1;min-width:0}
+.todo-add-row button{flex:0 0 auto;padding:0 15px;border-radius:11px;background:var(--soft);color:#7C5DB8;font-size:12px;font-weight:700}
+.todo-item{
+  display:flex;align-items:center;gap:10px;padding:10px 11px;margin-bottom:7px;
+  border-radius:11px;background:#FAF7F3;border:1px solid var(--line);
+}
+.todo-check{width:20px;height:20px;flex:0 0 20px;border-radius:6px;border:1.8px solid #C9B6F0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.todo-check.done{background:var(--accent);border-color:var(--accent)}
+.todo-txt{flex:1;min-width:0;font-size:13px;word-break:break-all}
+.todo-txt.done{color:var(--muted);text-decoration:line-through}
+.todo-del{color:var(--muted);font-size:17px;padding:0 2px;line-height:1}
+.todo-date{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.todo-date.overdue{color:#C26072}
+.todo-empty{font-size:11.5px;color:var(--muted);padding:3px 2px 8px}
+.todo-sec-note{font-size:10.5px;color:var(--muted);line-height:1.7;margin-top:2px}
+.todo-inline-date{border:1px solid var(--line);background:#FDFBF8;border-radius:9px;padding:7px 8px;font-size:12px;width:100%;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -240,6 +262,28 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
       <div class="panel" id="panel-fx"></div>
     </section>
 
+    <!-- 待办 -->
+    <section class="tabpane" id="tab-todos">
+      <div class="todo-head">
+        <div class="todo-day" id="todoDay"></div>
+        <div class="tiny muted" id="todoSummary"></div>
+      </div>
+
+      <div class="stage-shell">
+        <div class="stage" id="todoStage">
+          <canvas id="todoPreview"></canvas>
+          <div class="stage-badge" id="todoBadge"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btnTodoSave">存作品</button>
+        <button class="btn primary" id="btnTodoExport">生成壁纸</button>
+      </div>
+
+      <div id="todoBody"></div>
+    </section>
+
     <!-- 图库 -->
     <section class="tabpane" id="tab-gallery">
       <div class="gallery-head">
@@ -270,6 +314,7 @@ input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-rad
 
   <nav class="tabbar" id="tabbar">
     <button data-t="make" class="on"><span class="ic">◈</span><span class="tx">制作</span></button>
+    <button data-t="todos"><span class="ic">✓</span><span class="tx">待办</span></button>
     <button data-t="gallery"><span class="ic">▦</span><span class="tx">图库</span></button>
     <button data-t="works"><span class="ic">♡</span><span class="tx">作品</span></button>
   </nav>
@@ -682,10 +727,16 @@ function getGenerator(id) {
 
 var KEY = 'wallpaper-studio-v1';
 var WORKS_KEY = 'wallpaper-works-v1';
+var TODO_KEY = 'wallpaper-todos-v1';
 var PREVIEW_W = 470;
 
 var $ = function (id) { return document.getElementById(id); };
 var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+var pad2 = function (n) { return n < 10 ? '0' + n : '' + n; };
+function todayStr(d) { d = d || new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function fmtDate(s) { var p = String(s).split('-'); return (+p[1]) + '月' + (+p[2]) + '日'; }
+function weekdayName() { return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date().getDay()]; }
+function newId() { return 'x' + Date.now() + Math.floor(Math.random() * 1000); }
 
 function defaultState() {
   return {
@@ -698,11 +749,26 @@ function defaultState() {
     }],
     sticker: null,
     fx: { vignette: .18, topShade: 0, bottomShade: .12, grain: .05, border: 0, brightness: 1, contrast: 1, saturate: 1 },
+    todoOn: true,
     sel: 't1'
   };
 }
 
+function defaultTodos() {
+  return {
+    day: todayStr(),
+    today: [
+      { id: 'd1', text: '把最重要的那件事先做完', done: false }
+    ],
+    future: [],
+    fixed: [
+      { id: 'f1', text: '喝水 · 不刷短剧' }
+    ]
+  };
+}
+
 var S = defaultState();
+var TD = defaultTodos();
 var imgCache = {};
 var galCat = 'all';
 var galSeeds = {};
@@ -732,6 +798,33 @@ function getWorks() {
 function putWorks(w) {
   try { localStorage.setItem(WORKS_KEY, JSON.stringify(w)); return true; }
   catch (e) { toast('本机空间不足，作品未保存'); return false; }
+}
+
+/* ---------- 待办存取与跨天滚动 ---------- */
+
+function loadTodos() {
+  try {
+    var raw = localStorage.getItem(TODO_KEY);
+    if (!raw) return;
+    var o = JSON.parse(raw);
+    if (o && Array.isArray(o.today) && Array.isArray(o.future) && Array.isArray(o.fixed)) {
+      TD = o;
+    }
+  } catch (e) { /* 忽略损坏数据 */ }
+}
+function saveTodos() {
+  try { localStorage.setItem(TODO_KEY, JSON.stringify(TD)); }
+  catch (e) { toast('本机空间不足，待办未保存'); }
+}
+function rolloverTodos() {
+  var tk = todayStr();
+  if (TD.day === tk) return;
+  TD.today = TD.today.filter(function (x) { return !x.done; });
+  var due = TD.future.filter(function (x) { return x.date && x.date <= tk; });
+  TD.future = TD.future.filter(function (x) { return !x.date || x.date > tk; });
+  due.forEach(function (x) { TD.today.push({ id: x.id, text: x.text, done: false }); });
+  TD.day = tk;
+  saveTodos();
 }
 
 /* ---------- 图片缓存 ---------- */
@@ -821,6 +914,109 @@ function drawSticker(c, W, H, s, colorFilter) {
   c.restore();
 }
 
+function _roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+function _check(c, x, y, sz, on) {
+  c.save();
+  c.strokeStyle = on ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.62)';
+  c.lineWidth = Math.max(1.5, sz * .11);
+  _roundRect(c, x, y, sz, sz, sz * .22);
+  if (on) { c.fillStyle = 'rgba(155,123,216,.92)'; c.fill(); }
+  c.stroke();
+  if (on) {
+    c.beginPath();
+    c.moveTo(x + sz * .22, y + sz * .52);
+    c.lineTo(x + sz * .44, y + sz * .72);
+    c.lineTo(x + sz * .8, y + sz * .26);
+    c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, sz * .13);
+    c.lineCap = 'round'; c.lineJoin = 'round'; c.stroke();
+  }
+  c.restore();
+}
+
+function drawTodos(c, W, H, s) {
+  if (!s.todoOn) return;
+  var today = (TD.today || []).slice(0, 8);
+  var future = (TD.future || []).filter(function (x) { return x.date && x.date > TD.day; }).slice(0, 5);
+  var fixed = (TD.fixed || []).slice(0, 5);
+  if (!today.length && !future.length && !fixed.length) return;
+
+  var padX = W * .085;
+  var innerW = W - padX * 2;
+  var fontSize = W * .034;
+  var lh = fontSize * 1.62;
+  var top = H * .085;
+  var y = top;
+
+  var need = 4.47 + today.length * 1.62 +
+    (future.length ? 3.6 + future.length * 1.49 : 0) +
+    (fixed.length ? 2.11 + fixed.length * 1.49 : 0);
+  var panelH = need * fontSize + fontSize * 1.8;
+  if (top + panelH > H * .88) panelH = H * .88 - top;
+
+  c.save();
+  c.fillStyle = 'rgba(24,20,34,.44)';
+  _roundRect(c, padX - W * .035, top - fontSize * 1.2, innerW + W * .07, panelH, W * .05);
+  c.fill();
+
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  c.shadowColor = 'rgba(0,0,0,.45)'; c.shadowBlur = fontSize * .5;
+
+  c.font = '700 ' + (fontSize * 1.25) + 'px ' + FONTS[0].css;
+  c.fillStyle = '#FFFFFF';
+  y += fontSize * 1.15;
+  c.fillText('今日待办', padX, y);
+
+  c.font = '400 ' + (fontSize * .92) + 'px ' + FONTS[0].css;
+  c.fillStyle = 'rgba(255,255,255,.78)';
+  c.fillText(fmtDate(TD.day) + ' · ' + weekdayName(), padX, y + lh * .96);
+
+  y += lh * 2.05;
+  c.font = '500 ' + fontSize + 'px ' + FONTS[0].css;
+  today.forEach(function (it) {
+    _check(c, padX, y - fontSize * .78, fontSize * .82, !!it.done);
+    c.fillStyle = it.done ? 'rgba(255,255,255,.55)' : '#FFFFFF';
+    c.fillText(it.text, padX + fontSize * 1.25, y);
+    y += lh;
+  });
+
+  if (future.length) {
+    y += lh * .35;
+    c.font = '600 ' + (fontSize * .88) + 'px ' + FONTS[0].css;
+    c.fillStyle = 'rgba(255,238,205,.95)';
+    c.fillText('接下来', padX, y);
+    y += lh * .95;
+    c.font = '400 ' + (fontSize * .94) + 'px ' + FONTS[0].css;
+    c.fillStyle = 'rgba(255,255,255,.9)';
+    future.forEach(function (it) {
+      c.fillText(fmtDate(it.date) + '  ' + it.text, padX, y);
+      y += lh * .92;
+    });
+  }
+
+  if (fixed.length) {
+    y += lh * .35;
+    c.font = '600 ' + (fontSize * .88) + 'px ' + FONTS[0].css;
+    c.fillStyle = 'rgba(214,246,226,.95)';
+    c.fillText('每天', padX, y);
+    y += lh * .95;
+    c.font = '400 ' + (fontSize * .94) + 'px ' + FONTS[0].css;
+    c.fillStyle = 'rgba(255,255,255,.9)';
+    fixed.forEach(function (it) {
+      c.fillText('· ' + it.text, padX + fontSize * .2, y);
+      y += lh * .92;
+    });
+  }
+  c.restore();
+}
+
 function renderScene(c, W, H, s, skipFx) {
   c.save();
   c.clearRect(0, 0, W, H);
@@ -878,6 +1074,7 @@ function renderScene(c, W, H, s, skipFx) {
   }
 
   drawTexts(c, W, H, s);
+  drawTodos(c, W, H, s);
 
   if (!skipFx && s.fx.border > 0) {
     c.strokeStyle = 'rgba(255,255,255,' + s.fx.border + ')';
@@ -1065,15 +1262,62 @@ function go(tab) {
   else applyTab(tab);
 }
 function applyTab(tab) {
-  ['make', 'gallery', 'works'].forEach(function (t) {
-    $('tab-' + t).classList.toggle('on', t === tab);
-  });
+  var tabs = ['make', 'todos', 'gallery', 'works'];
+  tabs.forEach(function (t) { $('tab-' + t).classList.toggle('on', t === tab); });
   $('tabbar').querySelectorAll('button').forEach(function (b) {
     b.classList.toggle('on', b.getAttribute('data-t') === tab);
   });
+  if (tab === 'todos') renderTodoPage();
   if (tab === 'gallery') renderGallery();
   if (tab === 'works') renderWorks();
   window.scrollTo(0, 0);
+}
+
+/* ---------- 待办页 ---------- */
+
+function todoListHtml(list, kind, withDate) {
+  if (!list.length) return '<div class="todo-empty">还没有，添加一条吧</div>';
+  return list.map(function (it) {
+    var over = withDate && it.date && it.date < todayStr();
+    return '<div class="todo-item">' +
+      (kind === 'today' ? '<span class="todo-check' + (it.done ? ' done' : '') + '" data-act="tdcheck" data-id="' + it.id + '">' + (it.done ? '✓' : '') + '</span>' : '') +
+      '<span class="todo-txt' + (it.done ? ' done' : '') + '">' + String(it.text).replace(/</g, '&lt;') + '</span>' +
+      (withDate ? '<span class="todo-date' + (over ? ' overdue' : '') + '">' + (it.date ? fmtDate(it.date) : '未定') + '</span>' : '') +
+      '<span class="todo-del" data-act="tdel" data-kind="' + kind + '" data-id="' + it.id + '">×</span></div>';
+  }).join('');
+}
+
+function renderTodoPage() {
+  var undone = TD.today.filter(function (x) { return !x.done; }).length;
+  $('todoDay').innerHTML = fmtDate(TD.day) + ' ' + weekdayName() + '<small>DAILY TODO</small>';
+  $('todoSummary').textContent = '今日 ' + undone + ' 项未完成';
+  var toggle = '<div class="toggle-row"><span>待办显示在壁纸上</span><span class="toggle' + (S.todoOn ? ' on' : '') + '" data-act="tdtoggle"></span></div>';
+  $('todoBody').innerHTML =
+    '<div class="card"><div class="card-h"><h2>今天要做</h2><span class="hint">完成后打勾</span></div>' +
+    '<div class="todo-add-row"><input type="text" id="tdInput" placeholder="写一件今天要做的事" maxlength="40"><button data-act="tdadd">添加</button></div>' +
+    todoListHtml(TD.today, 'today', false) + '</div>' +
+
+    '<div class="card"><div class="card-h"><h2>以后要做</h2><span class="hint">到期自动进今天</span></div>' +
+    '<input type="date" class="todo-inline-date" id="tfDate" value="' + todayStr() + '">' +
+    '<div class="todo-add-row"><input type="text" id="tfInput" placeholder="写一件以后要做的事" maxlength="40"><button data-act="tfadd">添加</button></div>' +
+    todoListHtml(TD.future, 'future', true) + '</div>' +
+
+    '<div class="card"><div class="card-h"><h2>固定事项</h2><span class="hint">每天都会出现</span></div>' +
+    '<div class="todo-add-row"><input type="text" id="fxInput" placeholder="每天重复的事" maxlength="40"><button data-act="fxadd">添加</button></div>' +
+    todoListHtml(TD.fixed, 'fixed', false) + '</div>' +
+
+    '<div class="card">' + toggle +
+    '<div class="todo-sec-note">当天没打勾的待办，第二天会自动带过去；「以后要做」到期那天自动进入今天。背景和图库在「制作」页里改。</div></div>';
+
+  renderTodoPreview();
+}
+
+function renderTodoPreview() {
+  var cv = $('todoPreview');
+  var pw = PREVIEW_W, ph = Math.round(PREVIEW_W * S.h / S.w);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  renderScene(cv.getContext('2d'), pw, ph, S);
+  $('todoBadge').textContent = S.w + ' × ' + S.h;
 }
 
 /* ---------- 作品 ---------- */
@@ -1154,7 +1398,7 @@ function bindEvents() {
     if (b) go(b.getAttribute('data-t'));
   });
   window.addEventListener('hashchange', function () {
-    applyTab(['make', 'gallery', 'works'].indexOf(location.hash.slice(1)) >= 0 ? location.hash.slice(1) : 'make');
+    applyTab(['make', 'todos', 'gallery', 'works'].indexOf(location.hash.slice(1)) >= 0 ? location.hash.slice(1) : 'make');
   });
 
   $('sizeSel').addEventListener('change', function () {
@@ -1186,6 +1430,15 @@ function bindEvents() {
   });
   $('btnSave').addEventListener('click', saveWork);
   $('btnExport').addEventListener('click', exportPng);
+  $('btnTodoExport').addEventListener('click', exportPng);
+  $('btnTodoSave').addEventListener('click', saveWork);
+  $('todoBody').addEventListener('click', onTodoClick);
+  $('todoBody').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    if (e.target.id === 'tdInput') addTodoItem('today');
+    else if (e.target.id === 'tfInput') addTodoItem('future');
+    else if (e.target.id === 'fxInput') addTodoItem('fixed');
+  });
   $('btnRefreshAll').addEventListener('click', function () {
     Object.keys(galSeeds).forEach(function (k) { galSeeds[k] = [Math.floor(10000 + Math.random() * 900000)]; });
     renderGallery(); toast('换了一批');
@@ -1371,6 +1624,47 @@ function onClick(e) {
   }
 }
 
+function addTodoItem(kind) {
+  var inputId = kind === 'today' ? 'tdInput' : kind === 'future' ? 'tfInput' : 'fxInput';
+  var el = $(inputId);
+  var text = el ? String(el.value || '').trim() : '';
+  if (!text) { toast('先写点内容'); return; }
+  if (kind === 'today') TD.today.push({ id: newId(), text: text, done: false });
+  else if (kind === 'future') {
+    var dv = $('tfDate') ? $('tfDate').value : '';
+    TD.future.push({ id: newId(), text: text, date: dv || todayStr() });
+  } else TD.fixed.push({ id: newId(), text: text });
+  el.value = '';
+  saveTodos(); renderTodoPage();
+  renderPreview(); saveState();
+}
+
+function onTodoClick(e) {
+  var b = e.target.closest('[data-act]');
+  if (!b) return;
+  var act = b.getAttribute('data-act');
+  var id = b.getAttribute('data-id');
+  var kind = b.getAttribute('data-kind');
+  var list = kind === 'today' ? TD.today : kind === 'future' ? TD.future : null;
+  if (act === 'tdadd') { addTodoItem('today'); return; }
+  if (act === 'tfadd') { addTodoItem('future'); return; }
+  if (act === 'fxadd') { addTodoItem('fixed'); return; }
+  if (act === 'tdcheck') {
+    var it = TD.today.filter(function (x) { return x.id === id; })[0];
+    if (it) it.done = !it.done;
+    saveTodos(); renderTodoPage(); renderPreview(); saveState(); return;
+  }
+  if (act === 'tdel') {
+    var arr = kind === 'today' ? TD.today : kind === 'future' ? TD.future : TD.fixed;
+    TD[kind] = arr.filter(function (x) { return x.id !== id; });
+    saveTodos(); renderTodoPage(); renderPreview(); return;
+  }
+  if (act === 'tdtoggle') {
+    S.todoOn = !S.todoOn;
+    saveState(); renderTodoPage(); renderPreview(); return;
+  }
+}
+
 /* ---------- 上传图片 ---------- */
 
 function applyPickedFile(kind, f) {
@@ -1419,6 +1713,8 @@ function boot() {
     return '<option value="' + p.id + '">' + p.name + '</option>';
   }).join('');
   loadState();
+  loadTodos();
+  rolloverTodos();
   syncSize();
   saveState();
   if (S.bg.src) loadImage(S.bg.src, renderPreview);
